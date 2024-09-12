@@ -148,23 +148,46 @@ var Base64 = {
   }
 }
 
-function double_encode(val){
+function double_encode(val) {
   return Base64.encode(Base64.encode(val));
 }
 
+var telegram_maps_chatid = {};
+var zoom_email_maps_credentials = {};
 function onOpen() {
   let ui = SpreadsheetApp.getUi();
 
   ui.createMenu("Zoom")
     .addItem("Check Overlap", "check_lecture_overlap")
     .addItem("Create Zoom Link", "create_zoom_meet")
-    .addItem("Create Zoom Link Bulk" , "bulk_create_zoom_meet_v2")
+    .addItem("Create Zoom Link Bulk", "bulk_create_zoom_meet_v2")
     .addToUi();
 
   ui.createMenu("Telegram")
     .addItem("Send Message", "sendMessageOnTelegram")
-    .addItem("Send Message Bulk" , "bulk_sendMessageOnTelegram_v2")
+    .addItem("Send Message Bulk", "bulk_sendMessageOnTelegram_v2")
     .addToUi();
+
+  ui.createMenu("Doubts")
+    .addItem("Single create" , "generate_doubts")
+    .addItem("Bulk create" , "bulk_generate_doubts")
+    .addToUi();
+
+
+  let telegram_data = ss.getSheetByName("TelegramGroups").getDataRange().getDisplayValues();
+  let zoom_data = ss.getSheetByName("Zoom Accounts").getDataRange().getDisplayValues();
+
+  for (let i = 0; i < telegram_data.length; i++) {
+    telegram_maps_chatid[telegram_data[i][0]] = telegram_data[i][1];
+  }
+
+  for (let i = 0; i < zoom_data.length; i++) {
+    zoom_email_maps_credentials[zoom_data[i][1]] = [
+      zoom_data[i][4],
+      zoom_data[i][5],
+      zoom_data[i][6]
+    ];
+  }
 
 }
 
@@ -242,34 +265,34 @@ function findOverlappingMeetings(meets) {
   return Array.from(result);
 }
 
-function cal_formated_duration(duration){
+function cal_formated_duration(duration) {
   let hrs = Math.floor(duration / 60);
   let min = duration % 60;
 
-  let ans="";
-  if(hrs) ans = hrs + " hrs ";
+  let ans = "";
+  if (hrs) ans = hrs + " hrs ";
 
-  if(min)
+  if (min)
     ans += min + " min";
 
 
-  return ans; 
+  return ans;
 }
 
-function cal_delay(told , real){
+function cal_delay(told, real) {
   let told_arr = told.split(":")
   let real_arr = real.split(":");
 
-  let told_min = Number(told_arr[0]) * 60  + Number(told_arr[1]);
+  let told_min = Number(told_arr[0]) * 60 + Number(told_arr[1]);
   let real_min = Number(real_arr[0]) * 60 + Number(real_arr[1]);
 
   let ans = "";
 
   let delay_min = real_min - told_min;
 
-  if(delay_min > 0){
+  if (delay_min > 0) {
     ans = cal_formated_duration(delay_min);
-  }else{
+  } else {
     ans = "No Delay";
   }
 
@@ -278,9 +301,9 @@ function cal_delay(told , real){
 }
 
 const swapElements = (array, index1, index2) => {
-    let temp = array[index1];
-    array[index1] = array[index2];
-    array[index2] = temp;
+  let temp = array[index1];
+  array[index1] = array[index2];
+  array[index2] = temp;
 }
 
 function swapValuesTokey(j) {
@@ -291,23 +314,23 @@ function swapValuesTokey(j) {
   return res;
 }
 
-function ddmmyyyy_to_yyyymmdd(d){
+function ddmmyyyy_to_yyyymmdd(d) {
   let d_arr = d.split("-");
 
-  if(d_arr.length === 3)
+  if (d_arr.length === 3)
     return d_arr[2] + "-" + d_arr[1] + "-" + d_arr[0];
-  else  
+  else
     return;
 
 }
 
 function check_lecture_overlap(e = "c") {
   let ui = SpreadsheetApp.getUi();
-  
+
   if (e == "uc") {
     ui.alert("🚧Under Construction!🚧 - This feature will be available soon.");
     return;
-  }else if(SpreadsheetApp.getActiveSheet().getName() !== "Lectures"){
+  } else if (SpreadsheetApp.getActiveSheet().getName() !== "Lectures") {
     ui.alert("Please use this option inside Lectures sheet");
     return;
   }
@@ -419,8 +442,8 @@ function check_lecture_overlap(e = "c") {
   }
 }
 
-function get_zoom_access_token(account_id ,client_id  ,client_secret){
-  
+function get_zoom_access_token(account_id, client_id, client_secret) {
+
   let access_token_res = null;
   try {
     let details = {
@@ -456,9 +479,9 @@ function get_zoom_access_token(account_id ,client_id  ,client_secret){
 function create_zoom_meet(type = "single", row = null) {
 
   let ui = SpreadsheetApp.getUi();
-  if(type === "single" && SpreadsheetApp.getActiveSheet().getName() !== "Lectures"){
+  if (type === "single" && SpreadsheetApp.getActiveSheet().getName() !== "Lectures") {
     ui.alert("Please use this option inside Lectures sheet");
-    return ;
+    return;
   }
 
   let zoom_accounts_data = ss.getSheetByName("Zoom Accounts").getDataRange().getDisplayValues();
@@ -484,15 +507,24 @@ function create_zoom_meet(type = "single", row = null) {
   }
 
   let found = false;
-  for (let i = 0; i < zoom_accounts_data.length; i++) {
-    if (zoom_accounts_data[i][1] == meeting_data[0][email_idx]) {
-      found = true;
-      client_id = zoom_accounts_data[i][4];
-      client_secret = zoom_accounts_data[i][5];
-      account_id = zoom_accounts_data[i][6];
-      break;
+
+  if (meeting_data[0][email_idx] in zoom_email_maps_credentials) {
+    found = true;
+    client_id = zoom_email_maps_credentials[meeting_data[0][email_idx]][0]
+    client_secret = zoom_email_maps_credentials[meeting_data[0][email_idx]][1]
+    account_id = zoom_email_maps_credentials[meeting_data[0][email_idx]][2]
+  } else {
+    for (let i = 0; i < zoom_accounts_data.length; i++) {
+      if (zoom_accounts_data[i][1] == meeting_data[0][email_idx]) {
+        found = true;
+        client_id = zoom_accounts_data[i][4];
+        client_secret = zoom_accounts_data[i][5];
+        account_id = zoom_accounts_data[i][6];
+        break;
+      }
     }
   }
+
 
   if (found === false) {
     if (type === "single")
@@ -632,26 +664,26 @@ function create_zoom_meet(type = "single", row = null) {
 
         range.setValue(final_msg);
 
-        
-        
+
+
       } else {
         range.setValue(meet_credentials);
       }
 
-      
+
       let reports_helping_meta_data_sheet = ss.getSheetByName("ReportsHelpingMetaData");
       let rhmd_last_row = reports_helping_meta_data_sheet.getLastRow() + 1;
       reports_helping_meta_data_sheet.getRange(`A${rhmd_last_row}:H${rhmd_last_row}`).setValues([
-          [ meeting_data[0][date_idx], 
-            meeting_data[0][faculty_code_idx],
-            meeting_data[0][email_idx],
-            created_meeting_data.id,
-            meeting_data[0][start_time_idx], 
-            meeting_data[0][end_time_idx],
-            meeting_data[0][topic_idx],
-            ""
-          ]
-        ]);
+        [meeting_data[0][date_idx],
+        meeting_data[0][faculty_code_idx],
+        meeting_data[0][email_idx],
+        created_meeting_data.id,
+        meeting_data[0][start_time_idx],
+        meeting_data[0][end_time_idx],
+        meeting_data[0][topic_idx],
+          ""
+        ]
+      ]);
 
 
     } catch (e) {
@@ -665,7 +697,7 @@ function create_zoom_meet(type = "single", row = null) {
 
 }
 
-function bulk_create_zoom_meet_v2(e = "c"){
+function bulk_create_zoom_meet_v2(e = "c") {
   let ui = SpreadsheetApp.getUi();
 
   if (e === "uc") {
@@ -673,25 +705,25 @@ function bulk_create_zoom_meet_v2(e = "c"){
     return;
   }
 
-  if(SpreadsheetApp.getActiveSheet().getName() !== "Lectures"){
+  if (SpreadsheetApp.getActiveSheet().getName() !== "Lectures") {
     ui.alert("Please use this option inside Lectures sheet");
-    return ;
+    return;
   }
 
-  let input = ui.prompt("Please enter the range (example: 2-30)");
-  
+  let input = ui.prompt("Please enter the range (example: 3-30)");
+
   let button = input.getSelectedButton();
   let lecture_sheet = ss.getSheetByName("Lectures");
-  
+
   if (button === ui.Button.OK) {
     let range = input.getResponseText();
     let range_arr = range.split("-");
-    if(range_arr.length !== 2){
+    if (range_arr.length !== 2) {
       ui.alert("Enter the valid range");
       return;
     }
 
-    if(isNaN(range_arr[0].toString().trim()) || isNaN(range_arr[1].toString().trim())){
+    if (isNaN(range_arr[0].toString().trim()) || isNaN(range_arr[1].toString().trim())) {
       ui.alert("Enter the valid range");
       return;
     }
@@ -704,8 +736,8 @@ function bulk_create_zoom_meet_v2(e = "c"){
       return;
     }
 
-    if (start == 1 || end == 1) {
-      ui.alert("please do not enter value 1 (i.e. Header)");
+    if (start === 1 || end === 1 || start === 2 || end === 2) {
+      ui.alert("please do not enter value 1 or 2 (i.e. Header)");
       return;
     }
 
@@ -730,13 +762,13 @@ function bulk_create_zoom_meet_v2(e = "c"){
     if (!all_done) {
       ui.alert("Some meeting are not created kindly check.");
     }
-    
 
-    
+
+
   } else if (button === ui.Button.CLOSE) {
-    Logger.log("The user clicked the [X] button and closed the prompt dialog."); 
+    Logger.log("The user clicked the [X] button and closed the prompt dialog.");
   }
-    
+
 
 }
 
@@ -792,9 +824,9 @@ function bulk_create_zoom_meet(e = "uc") {
 
 function sendMessageOnTelegram(type = "single", row = null) {
   let ui = SpreadsheetApp.getUi();
-  if(type === "single" && SpreadsheetApp.getActiveSheet().getName() !== "Lectures"){
+  if (type === "single" && SpreadsheetApp.getActiveSheet().getName() !== "Lectures") {
     ui.alert("Please use this option inside Lectures sheet");
-    return ;
+    return;
   }
 
   let chat_id = null;
@@ -820,11 +852,15 @@ function sendMessageOnTelegram(type = "single", row = null) {
     return "No telegram group is selected";
   }
 
-
-  for (let i = 0; i < telegramGrps.length; i++) {
-    if (telegramGrps[i][0] == meeting_data[0][telegram_group_idx]) {
-      chat_id = telegramGrps[i][1];
-      break;
+  /***************************************************************************************/
+  if (meeting_data[0][telegram_group_idx] in telegram_maps_chatid) {
+    chat_id = telegram_maps_chatid[meeting_data[0][telegram_group_idx]];
+  } else {
+    for (let i = 0; i < telegramGrps.length; i++) {
+      if (telegramGrps[i][0] == meeting_data[0][telegram_group_idx]) {
+        chat_id = telegramGrps[i][1];
+        break;
+      }
     }
   }
 
@@ -839,6 +875,7 @@ function sendMessageOnTelegram(type = "single", row = null) {
       ui.alert("Please add Chat Id of this telegram group in \"TelegramGroups\" sheet.");
     return "Please add Chat Id of this telegram group in \"TelegramGroups\" sheet.";
   }
+  /***************************************************************************************/
 
   let token = ss.getSheetByName("Information").getRange("A6").getValue();
   let text_message = lectures.getRange(`${int_to_alpha[messages_idx]}${row}`).getValue();
@@ -887,7 +924,7 @@ function sendMessageOnTelegram(type = "single", row = null) {
   }
 }
 
-function bulk_sendMessageOnTelegram_v2(e = "c"){
+function bulk_sendMessageOnTelegram_v2(e = "c") {
   let ui = SpreadsheetApp.getUi();
 
   if (e === "uc") {
@@ -895,34 +932,34 @@ function bulk_sendMessageOnTelegram_v2(e = "c"){
     return;
   }
 
-  if(SpreadsheetApp.getActiveSheet().getName() !== "Lectures"){
+  if (SpreadsheetApp.getActiveSheet().getName() !== "Lectures") {
     ui.alert("Please use this option inside Lectures sheet");
-    return ;
+    return;
   }
 
-  let input = ui.prompt("Please enter the range (example: 2-30)");
-  
+  let input = ui.prompt("Please enter the range (example: 3-30)");
+
   let button = input.getSelectedButton();
   let lecture_sheet = ss.getSheetByName("Lectures");
-  
+
   if (button === ui.Button.OK) {
     let range = input.getResponseText();
     let range_arr = range.split("-");
-    if(range_arr.length !== 2){
+    if (range_arr.length !== 2) {
       ui.alert("Enter the valid range");
       return;
     }
 
-    if(isNaN(range_arr[0].toString().trim()) || isNaN(range_arr[1].toString().trim())){
+    if (isNaN(range_arr[0].toString().trim()) || isNaN(range_arr[1].toString().trim())) {
       ui.alert("Enter the valid range");
       return;
     }
 
     let start = Number(range_arr[0]);
-    let end = Number(range_arr[1]);  
+    let end = Number(range_arr[1]);
 
-    if (start == 1 || end == 1) {
-      ui.alert("please do not enter value 1 (i.e. Header)");
+    if (start === 1 || end === 1 || start === 2 || end === 2) {
+      ui.alert("please do not enter value 1 or 2 (i.e. Header)");
       return;
     }
 
@@ -950,11 +987,11 @@ function bulk_sendMessageOnTelegram_v2(e = "c"){
     if (!all_done) {
       ui.alert("Some messages are not sent kindly check.");
       return;
-    }  
+    }
 
-    
+
   } else if (button === ui.Button.CLOSE) {
-    Logger.log("The user clicked the [X] button and closed the prompt dialog."); 
+    Logger.log("The user clicked the [X] button and closed the prompt dialog.");
   }
 }
 
@@ -1025,7 +1062,7 @@ function genrate_chat_id(e = "c") {
     let url = `https://api.telegram.org/bot${token}/getUpdates`;
 
     let last_update_id = ss.getSheetByName("Information").getRange("A7").getValue();
-    if(last_update_id){
+    if (last_update_id) {
       url += `?offset=${last_update_id}`;
     }
 
@@ -1033,9 +1070,9 @@ function genrate_chat_id(e = "c") {
     let results = updates_res.result;
 
 
-    if(results.length === 100){
-      ss.getSheetByName("Information").getRange("A7").setValue(results[99].update_id+1);
-    }else{
+    if (results.length === 100) {
+      ss.getSheetByName("Information").getRange("A7").setValue(results[99].update_id + 1);
+    } else {
       ss.getSheetByName("Information").getRange("A7").setValue("");
     }
 
@@ -1059,7 +1096,7 @@ function genrate_chat_id(e = "c") {
   let error = false;
 
   for (let i = 1; i < telegrps.length; i++) {
-    if(telegrps[i][1].toString().trim().length > 0 && !isNaN(telegrps[i][1])) continue;
+    if (telegrps[i][1].toString().trim().length > 0 && !isNaN(telegrps[i][1])) continue;
 
     if (process[telegrps[i][0]]) {
       telegrpsheet.getRange(`B${i + 1}`).setValue(process[telegrps[i][0]]);
@@ -1075,7 +1112,7 @@ function genrate_chat_id(e = "c") {
 
 }
 
-function report_generation(e = "c"){
+function report_generation(e = "c") {
   let ui = SpreadsheetApp.getUi();
   if (e === "uc") {
     ui.alert("🚧Under Construction!🚧 - This feature will be available soon.");
@@ -1089,22 +1126,22 @@ function report_generation(e = "c"){
 
   let zoom_cred_obj = {};
   for (let j = 0; j < zoom_accounts_data.length; j++) {
-      zoom_cred_obj[zoom_accounts_data[j][1]] = [zoom_accounts_data[j][4] , zoom_accounts_data[j][5] , zoom_accounts_data[j][6]];
+    zoom_cred_obj[zoom_accounts_data[j][1]] = [zoom_accounts_data[j][4], zoom_accounts_data[j][5], zoom_accounts_data[j][6]];
   }
 
   // Date ,	Facutly Code ,	Email ,	Meeting ID ,	Start Time ,	End Time , Meeting Topic ,	Report Done?
-  
+
   let all_generated = true;
 
-  for(let i=1 ; i<rhmd.length ; i++){
-    if(rhmd[i][7].toString().trim().length === 0){      
+  for (let i = 1; i < rhmd.length; i++) {
+    if (rhmd[i][7].toString().trim().length === 0) {
       all_generated = false;
-      let access_token_res = get_zoom_access_token(zoom_cred_obj[rhmd[i][2]][2] , zoom_cred_obj[rhmd[i][2]][0] , zoom_cred_obj[rhmd[i][2]][1]);
+      let access_token_res = get_zoom_access_token(zoom_cred_obj[rhmd[i][2]][2], zoom_cred_obj[rhmd[i][2]][0], zoom_cred_obj[rhmd[i][2]][1]);
 
       if (access_token_res) {
         try {
           let meeting_id = rhmd[i][3]
-          if(rhmd[i][3].toString().includes("/")) meeting_id = double_encode(rhmd[i][3]);
+          if (rhmd[i][3].toString().includes("/")) meeting_id = double_encode(rhmd[i][3]);
 
           let meeting_info_data_res = UrlFetchApp.fetch(`https://api.zoom.us/v2/past_meetings/${meeting_id}`, {
             "method": "GET",
@@ -1118,11 +1155,11 @@ function report_generation(e = "c"){
 
           // Logger.log(meeting_info_data);
 
-          if(meeting_info_data_res.getResponseCode() === 200){
-            
+          if (meeting_info_data_res.getResponseCode() === 200) {
+
             let last_row = past_meetings_reports_sheet.getLastRow() + 1;
 
-            try{
+            try {
               past_meetings_reports_sheet.getRange(`A${last_row}:L${last_row}`).setValues([[
                 rhmd[i][0],
                 rhmd[i][1],
@@ -1132,24 +1169,24 @@ function report_generation(e = "c"){
                 rhmd[i][5],
                 new Date(meeting_info_data.start_time).toTimeString().split(" ")[0],
                 new Date(meeting_info_data.end_time).toTimeString().split(" ")[0],
-                cal_formated_duration(cal_duration(rhmd[i][4] , rhmd[i][5])),
+                cal_formated_duration(cal_duration(rhmd[i][4], rhmd[i][5])),
                 cal_formated_duration(meeting_info_data.duration),
-                cal_delay(rhmd[i][4] , new Date(meeting_info_data.start_time).toTimeString().split(" ")[0]),
+                cal_delay(rhmd[i][4], new Date(meeting_info_data.start_time).toTimeString().split(" ")[0]),
                 meeting_info_data.participants_count
               ]]);
 
-            }catch(e){
+            } catch (e) {
               Logger.log(e.message);
             }
-            
 
-            ss.getSheetByName("ReportsHelpingMetaData").getRange("H" + (i+1)).setValue("Yes");
-            ss.getSheetByName("ReportsHelpingMetaData").getRange("I" + (i+1)).setValue("");
-          }else{
-            ss.getSheetByName("ReportsHelpingMetaData").getRange("I" + (i+1)).setValue(meeting_info_data.message);
+
+            ss.getSheetByName("ReportsHelpingMetaData").getRange("H" + (i + 1)).setValue("Yes");
+            ss.getSheetByName("ReportsHelpingMetaData").getRange("I" + (i + 1)).setValue("");
+          } else {
+            ss.getSheetByName("ReportsHelpingMetaData").getRange("I" + (i + 1)).setValue(meeting_info_data.message);
           }
         } catch (e) {
-           ss.getSheetByName("ReportsHelpingMetaData").getRange("I" + (i+1)).setValue(e.message);
+          ss.getSheetByName("ReportsHelpingMetaData").getRange("I" + (i + 1)).setValue(e.message);
         }
       }
 
@@ -1157,13 +1194,13 @@ function report_generation(e = "c"){
     }
   }
 
-  if(all_generated){
+  if (all_generated) {
     ui.alert("All reports are generated!");
   }
-  
+
 }
 
-function bulk_sendMessage(e = "c"){
+function bulk_sendMessage(e = "c") {
   let ui = SpreadsheetApp.getUi();
   if (e === "uc") {
     ui.alert("🚧Under Construction!🚧 - This feature will be available soon.");
@@ -1175,7 +1212,7 @@ function bulk_sendMessage(e = "c"){
   let telegram_groups = ss.getSheetByName("TelegramGroups").getDataRange().getValues();
   let token = ss.getSheetByName("Information").getRange("A6").getValue();
 
-  if(telegram_sheet.getRange("C2").getValue().toString().trim().length === 0){
+  if (telegram_sheet.getRange("C2").getValue().toString().trim().length === 0) {
     ui.alert("There is no message to send please enter the required message in C2 cell.");
     return;
   }
@@ -1183,34 +1220,475 @@ function bulk_sendMessage(e = "c"){
   let text_message = encodeURI(telegram_sheet.getRange("C2").getValue());
 
   let telegram_obj = {};
-  for(let i=1 ; i<telegram_groups.length ; i++){
-    if(!isNaN(telegram_groups[i][1]))
+  for (let i = 1; i < telegram_groups.length; i++) {
+    if (!isNaN(telegram_groups[i][1]))
       telegram_obj[telegram_groups[i][0]] = telegram_groups[i][1];
   }
 
-  for(let i=1 ; i<t_s_data.length ; i++){
-    if(t_s_data[i][0] in telegram_obj){
-        let chat_id = telegram_obj[t_s_data[i][0]];
-        try {
-          let url = `https://api.telegram.org/bot${token}/sendMessage?chat_id=${chat_id}&text=${text_message}&parse_mode=HTML`;
-          let res_msg = JSON.parse(UrlFetchApp.fetch(url));
-          if (res_msg.ok == true) {
-            telegram_sheet.getRange(`B${i+1}`).setValue("message sent!!");
-          } else {
-            if (res_msg.description) {
-              telegram_sheet.getRange(`B${i+1}`).setValue(res_msg.description);
-            }
-            else {
-              telegram_sheet.getRange(`B${i+1}`).setValue("Some error occured");
-            }
+  for (let i = 1; i < t_s_data.length; i++) {
+    if (t_s_data[i][0] in telegram_obj) {
+      let chat_id = telegram_obj[t_s_data[i][0]];
+      try {
+        let url = `https://api.telegram.org/bot${token}/sendMessage?chat_id=${chat_id}&text=${text_message}&parse_mode=HTML`;
+        let res_msg = JSON.parse(UrlFetchApp.fetch(url));
+        if (res_msg.ok == true) {
+          telegram_sheet.getRange(`B${i + 1}`).setValue("message sent!!");
+        } else {
+          if (res_msg.description) {
+            telegram_sheet.getRange(`B${i + 1}`).setValue(res_msg.description);
           }
-
-        } catch (e) {
-          telegram_sheet.getRange(`B${i+1}`).setValue(e.message);
+          else {
+            telegram_sheet.getRange(`B${i + 1}`).setValue("Some error occured");
+          }
         }
-    }else{
-      telegram_sheet.getRange(`B${i+1}`).setValue("Chat ID does not exist for this group.");
+
+      } catch (e) {
+        telegram_sheet.getRange(`B${i + 1}`).setValue(e.message);
+      }
+    } else {
+      telegram_sheet.getRange(`B${i + 1}`).setValue("Chat ID does not exist for this group.");
     }
   }
+
+}
+
+function onEdit(e) {
+ let ss = SpreadsheetApp.getActiveSpreadsheet();
+ let activeCell = ss.getActiveCell();
+
+ // {authMode=LIMITED, user=bakliwaltutorialswebapps@gmail.com, value=C26 Lloyds Noon COC, range=Range, source=Spreadsheet, oldValue=FACC 25Completely Online - COC [Wed + Sat]}
+  if((activeCell.getColumn() == 6 || activeCell.getColumn() == 5) && ss.getActiveSheet().getName() == "Doubts") {
+    let newValue = e.value;
+    let oldValue = e.oldValue;
+
+    if (!newValue) {
+      activeCell.setValue("");
+    } else {
+      if (!oldValue) {
+        activeCell.setValue(newValue);
+      } else {
+        activeCell.setValue(oldValue + "|~|" + newValue);
+      }
+    }
+  }
+
+  if(activeCell.getColumn() == 7 && ss.getActiveSheet().getName() == "Lectures") {
+    let newValue = e.value;
+    let oldValue = e.oldValue;
+
+    if (!newValue) {
+      activeCell.setValue("");
+    } else {
+      if (!oldValue) {
+        activeCell.setValue(newValue);
+      } else {
+        activeCell.setValue(oldValue + "|~|" + newValue);
+      }
+    }
+  }
+
+}
+
+function sendMessageOnTelegram_v2(type = "single", row = null) {
+  let ui = SpreadsheetApp.getUi();
+  if (type === "single" && SpreadsheetApp.getActiveSheet().getName() !== "Lectures") {
+    ui.alert("Please use this option inside Lectures sheet");
+    return;
+  }  
+
+  let lectures = ss.getSheetByName("Lectures");
+  let telegramGrps = ss.getSheetByName("TelegramGroups").getDataRange().getValues();
+
+  let cell = lectures.getActiveCell();
+
+  if (type === "single" && (cell.getValue().toString().trim().length == 0 || row == 1)) {
+    ui.alert("Please select a row with meeting data");
+    return;
+  }
+
+  if (row === null)
+    row = cell.getRowIndex();
+
+  let meeting_data = lectures.getRange(row, 1, 1, lectures.getMaxColumns()).getDisplayValues();
+
+  if (meeting_data[0][telegram_group_idx].toString().trim().length == 0) {
+    if (type === "single")
+      ui.alert("No telegram group is selected");
+    return "No telegram group is selected";
+  }
+
+  let token = ss.getSheetByName("Information").getRange("A6").getValue();
+  let text_message = lectures.getRange(`${int_to_alpha[messages_idx]}${row}`).getValue();
+  if (text_message.toString().trim().length === 0) {
+    if (type === "single")
+      ui.alert("Please genrate zoom meet or message first");
+    return "Please genrate zoom meet or message first";
+  } else if (text_message.toString().substring(0, 5) == "error") {
+    if (type === "single")
+      ui.alert("Please genrate zoom meet or message first");
+    return "Please genrate zoom meet or message first";
+  } else if (lectures.getRange(`${int_to_alpha[mode_idx]}${row}`).getValue().toString().trim().length === 0) {
+    if (type === "single")
+      ui.alert("No message mode is selected");
+    return "No message mode is selected";
+  }
+
   
+
+  let telegram_groups_arr = meeting_data[0][telegram_group_idx].toString().split("|~|");
+
+  let final_msg = "";
+
+  for(let j=0 ; j<telegram_groups_arr.length ; j++){
+    let chat_id = null;
+
+      if (telegram_groups_arr[j] in telegram_maps_chatid) {
+        chat_id = telegram_maps_chatid[telegram_groups_arr[j]];
+      } else {
+        for (let i = 0; i < telegramGrps.length; i++) {
+          if (telegramGrps[i][0] == telegram_groups_arr[j]) {
+            chat_id = telegramGrps[i][1];
+            break;
+          }
+        }
+      }
+
+      if (chat_id === null) {
+        final_msg += telegram_groups_arr[j] + " : " + "There is no such telegram group exits \"TelegramGroups\" sheet\n";
+        continue;
+      }
+
+      if (chat_id.toString().trim().length === 0 || isNaN(chat_id)) {
+        final_msg += telegram_groups_arr[j] + " : " + "Please add Chat Id of this telegram group in \"TelegramGroups\" sheet.\n";
+        continue;
+      }
+
+      text_message = encodeURI(text_message);
+
+      try {
+        let url = `https://api.telegram.org/bot${token}/sendMessage?chat_id=${chat_id}&text=${text_message}&parse_mode=HTML`;
+        let res_msg = JSON.parse(UrlFetchApp.fetch(url));
+        if (res_msg.ok == true) {
+          final_msg += telegram_groups_arr[j] + " : " + "message sent!!\n";
+          continue;
+
+        } else {
+          if (res_msg.description) {
+            final_msg += telegram_groups_arr[j] + " : " + res_msg.description + "\n";
+            continue;
+          }
+          else {
+            final_msg += telegram_groups_arr[j] + " : " + "Some error occured\n";
+            continue;
+          }
+        }
+      } catch (e) {
+        final_msg += telegram_groups_arr[j] + " : " + e.message + "\n";
+        continue;
+      }
+  }
+
+  if (type === "single") {
+    ui.alert(final_msg);
+    lectures.getRange(`${int_to_alpha[msg_sent_status_idx]}${row}`).setValue(final_msg);
+    return;
+  }
+
+  return final_msg;
+}
+
+function clean_up_trigger(sheet_name , date_idx){
+  let sheet = ss.getSheetByName(sheet_name);
+  let ini_len = sheet.getLastRow();
+  let last_col_char = String.fromCharCode(65 + (sheet.getLastColumn()-1));
+  let data = sheet.getRange(`A2:${last_col_char}${ini_len}`).getDisplayValues();
+  
+
+  let cur_date = new Date();
+  const lastWeekDate = new Date(cur_date.getTime() - 7 * 24 * 60 * 60 * 1000);
+  
+  data = data.filter((item) => {
+    let row_date = new Date(ddmmyyyy_to_yyyymmdd(item[date_idx]));
+    return lastWeekDate < row_date;
+  });
+
+  // clearing 
+
+  sheet.getRange(`A2:${last_col_char}${ini_len}`).clear();
+  sheet.getRange(`A2:${last_col_char}${data.length+1}`).setValues(data); 
+}
+
+function clear_reportsHelpingMetaData(){
+  clean_up_trigger("ReportsHelpingMetaData" , 0);
+}
+
+// -4200086864 : btesting
+function generate_doubts(type = "single" , row = null ){
+  let ui = SpreadsheetApp.getUi();
+  if (type === "single" && SpreadsheetApp.getActiveSheet().getName() !== "Doubts") {
+    ui.alert("Please use this option inside Doubts sheet");
+    return;
+  }
+
+  let e = "uc";
+  if(e === "uc"){
+    ui.alert("🚧Under Construction!🚧 - This feature will be available soon.");
+    return;
+  }
+
+  let code_to_subject = {"C" : "Chemistry" , "P" : "Physics" , "M" : "Maths"};
+  let zoom_accounts_data = ss.getSheetByName("Zoom Accounts").getDataRange().getDisplayValues();
+  let telegram_data = ss.getSheetByName("TelegramGroups").getDataRange().getDisplayValues();
+  let msg_template_data = ss.getSheetByName("Message").getDataRange().getValues();
+  let doubts = ss.getSheetByName("Doubts");
+
+  for (let i = 0; i < telegram_data.length; i++) {
+    telegram_maps_chatid[telegram_data[i][0]] = telegram_data[i][1];
+  }
+
+  let zoom_f_c_maps_credentials = {};
+  for (let i = 1; i < zoom_accounts_data.length; i++) {
+    zoom_f_c_maps_credentials[zoom_accounts_data[i][0]] = [
+      zoom_accounts_data[i][4],
+      zoom_accounts_data[i][5],
+      zoom_accounts_data[i][6],
+      zoom_accounts_data[i][1]
+    ];
+  }
+
+  
+  let cell = doubts.getActiveCell();
+  if (row === null && type === "single") {
+    row = cell.getRowIndex();
+  }
+  let no_of_slots = doubts.getRange(`B${row}`).getValue();
+  if (type === "single" && (cell.getValue().toString().trim().length == 0 || row == 1 || no_of_slots.toString().trim().length == 0)) {
+    ui.alert("Please select a starting row of a doubt collection");
+    return ;
+  }
+
+  let final_msg = msg_template_data[2][1] + "\n\n";
+  let telegram_grps_chat_ids = [];
+  let doubts_data = doubts.getRange(`A${row}:F${row+no_of_slots-1}`).getDisplayValues();
+
+  for(let r=0 ; r<no_of_slots ; r++){
+    let slot_msg = "";
+    let faculty = doubts_data[r][4].toString().split("|~|");
+    let tel_groups = doubts_data[r][5].toString().split("|~|");
+
+    if(tel_groups.length){
+      for(let i=0 ; i<tel_groups.length ; i++){
+        if(telegram_maps_chatid[tel_groups[i]] && !isNaN(telegram_maps_chatid[tel_groups[i]]) && !telegram_grps_chat_ids.includes(telegram_maps_chatid[tel_groups[i]])){
+          telegram_grps_chat_ids.push(telegram_maps_chatid[tel_groups[i]]);
+        }
+      }
+    }
+
+
+    if(faculty.length){
+      slot_msg = `<blockquote>\nZoom (ONLINE)-SLOT ${r+1}  (${tConvert(doubts_data[r][2])} to ${tConvert(doubts_data[r][3])})\n\n`;
+      for(let i=0 ; i<faculty.length ; i++){
+        if(zoom_f_c_maps_credentials[faculty[i]]){
+          let client_id = zoom_f_c_maps_credentials[faculty[i]][0] ;
+          let client_secret = zoom_f_c_maps_credentials[faculty[i]][1];
+          let account_id = zoom_f_c_maps_credentials[faculty[i]][2];
+
+          let access_token_res = get_zoom_access_token(account_id , client_id , client_secret);
+
+          let created_meeting_data;
+
+          if (access_token_res) {
+            try {
+              let body = {
+                "agenda": `Doubts Session by ${faculty[i]} sir from ${tConvert(doubts_data[r][2])} to ${tConvert(doubts_data[r][3])} || ${doubts_data[0][0]}`,
+                "default_password": false,
+                "duration": cal_duration(doubts_data[r][2], doubts_data[r][3]),
+                "password": "987",
+                "pre_schedule": false,
+                "schedule_for": zoom_f_c_maps_credentials[faculty[i]][3],
+                "settings": {
+                  "allow_multiple_devices": false,
+                  "approval_type": 2,
+                  "audio": "voip",
+                  "authentication_domains": "bakliwaltutorials.com,bakliwaltutorialsiit.onmicrosoft.com",
+                  "auto_recording": "cloud",
+                  "contact_email": zoom_f_c_maps_credentials[faculty[i]][3],
+                  "contact_name": "BT-Lecture",
+                  "email_notification": true,
+                  "encryption_type": "enhanced_encryption",
+                  "focus_mode": true,
+                  "host_video": false,
+                  "jbh_time": 0,
+                  "join_before_host": false,
+                  "meeting_authentication": true,
+                  "mute_upon_entry": true,
+                  "participant_video": false,
+                  "use_pmi": false,
+                  "waiting_room": false,
+                  "watermark": false,
+                  "internal_meeting": false,
+                  "continuous_meeting_chat": {
+                    "enable": true,
+                    "auto_add_invited_external_users": false
+                  },
+                  "participant_focused_meeting": false,
+                  "auto_start_meeting_summary": false,
+                  "auto_start_ai_companion_questions": false
+                },
+                "start_time": `${ddmmyyyy_to_yyyymmdd(doubts_data[0][1])}T${doubts_data[r][2]}`,
+                "timezone": "Asia/Calcutta",
+                "topic": `Doubts Session by ${faculty[i]} sir from ${tConvert(doubts_data[r][2])} to ${tConvert(doubts_data[r][3])} || ${doubts_data[0][0]}`,
+                "type": 2
+              }
+
+              let created_meeting_data_res = UrlFetchApp.fetch(`https://api.zoom.us/v2/users/${zoom_f_c_maps_credentials[faculty[i]][3]}/meetings`, {
+                "method": "POST",
+                "headers": {
+                  'Content-Type': 'application/json',
+                  'Authorization': `${access_token_res.token_type} ${access_token_res.access_token}`
+                },
+                "payload": JSON.stringify(body),
+              });
+
+              if (created_meeting_data_res.getResponseCode() === 429) {
+                slot_msg += `${faculty[i]} : Too Many Requests\n`;
+                continue;
+              }
+              if (created_meeting_data_res.getResponseCode() === 400) {
+                slot_msg += `${faculty[i]} : Bad Request\n`;
+                continue;
+              }
+              if (created_meeting_data_res.getResponseCode() === 404) {
+                slot_msg += `${faculty[i]} : Not Found, (User does not exist: {userId}.)\n`;
+                continue;
+              }
+
+              created_meeting_data = JSON.parse(created_meeting_data_res);
+              let meet_credentials = created_meeting_data.join_url + '\n\nMeeting ID: ' + created_meeting_data.id + '\nPasscode: ' + created_meeting_data.password;
+
+              slot_msg += `${code_to_subject[faculty[i].substring(0 , 1)]} : ${faculty[i]} Sir ${tConvert(doubts_data[r][2])} to ${tConvert(doubts_data[r][3])} \n ${meet_credentials} \n`;
+
+            } catch (e) {
+              slot_msg += `${faculty[i]} : ${e.message} \n`;
+            }
+          }else{
+            slot_msg += `${faculty[i]} : error in generating Access token \n`;
+          }
+
+        }else{
+          slot_msg += `${faculty[i]} : zoom credentials does not exits for this faculty code. \n`;
+        }
+      }
+
+      slot_msg += `</blockquote>\n\n`;
+    }
+
+    final_msg += slot_msg;
+  }
+
+  final_msg += "\n\n"+ msg_template_data[2][2];
+  final_msg.replace("[DATE]" , doubts_data[0][0]);
+  doubts.getRange(`G${row}`).setValue(final_msg);
+
+  let link_preview_options = JSON.stringify({"is_disabled":true});
+  if(telegram_grps_chat_ids.length){
+    let token = ss.getSheetByName("Information").getRange("A6").getValue();
+    for(let i=0 ; i<telegram_grps_chat_ids.length ; i++){
+      let chat_id = telegram_grps_chat_ids[i];
+      final_msg = encodeURI(final_msg);
+
+      try {
+        let url = `https://api.telegram.org/bot${token}/sendMessage?chat_id=${chat_id}&text=${final_msg}&parse_mode=HTML&link_preview_options=${link_preview_options}`;
+        let res_msg = JSON.parse(UrlFetchApp.fetch(url));
+        if (res_msg.ok == true) {
+          doubts.getRange(`H${row}`).setValue("messages sent!!");
+        } else {
+          if (res_msg.description) {
+            doubts.getRange(`H${row}`).setValue(res_msg.description);
+          }
+          else {
+            doubts.getRange(`H${row}`).setValue("Some error occured");
+          }
+        }
+
+      } catch (e) {
+        doubts.getRange(`H${row}`).setValue(e.message);
+      }
+    }
+  }else{
+    doubts.getRange(`H${row}`).setValue("No telegram group is selected");
+  }
+
+}
+
+function bulk_generate_doubts(e = "uc"){
+  let ui = SpreadsheetApp.getUi();
+
+  if (e === "uc") {
+    ui.alert("🚧Under Construction!🚧 - This feature will be available soon.");
+    return;
+  }
+
+  if (SpreadsheetApp.getActiveSheet().getName() !== "Doubts") {
+    ui.alert("Please use this option inside Doubts sheet");
+    return;
+  }
+
+  let input = ui.prompt("Please enter the range (example: 3-30)");
+
+  let button = input.getSelectedButton();
+  let doubt_sheet = ss.getSheetByName("Doubts");
+
+  if (button === ui.Button.OK) {
+    let range = input.getResponseText();
+    let range_arr = range.split("-");
+    if (range_arr.length !== 2) {
+      ui.alert("Enter the valid range");
+      return;
+    }
+
+    if (isNaN(range_arr[0].toString().trim()) || isNaN(range_arr[1].toString().trim())) {
+      ui.alert("Enter the valid range");
+      return;
+    }
+
+    let start = Number(range_arr[0]);
+    let end = Number(range_arr[1]);
+
+    if (start === 1 || end === 1) {
+      ui.alert("please do not enter value 1 (i.e. Header)");
+      return;
+    }
+    if( doubt_sheet.getRange(`B${start}`).getValue().toString().trim().length() === 0 ||
+        doubt_sheet.getRange(`B${end}`).getValue().toString().trim().length() === 0 ){
+          ui.alert("Please Enter the starting row of an doubts collection.")
+          return ;
+    }
+
+    if (end < start) {
+      ui.alert("Start should be lesser than end");
+      return;
+    }
+
+    if (end - start + 1 > 50) {
+      ui.alert("The range should be smaller than 50.");
+      return;
+    }
+
+    let all_done = true;
+    let collection_len = null;
+    for (let row = start; row <= end; row+=collection_len) {
+      generate_doubts("bulk", row);
+      collection_len = Number(doubt_sheet.getRange(`B${row}`).getValue());
+    }
+
+    if (!all_done) {
+      ui.alert("Some messages are not sent kindly check.");
+      return;
+    }
+
+
+  } else if (button === ui.Button.CLOSE) {
+    Logger.log("The user clicked the [X] button and closed the prompt dialog.");
+  }
 }
